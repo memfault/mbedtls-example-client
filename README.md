@@ -5,13 +5,13 @@ Memfault mbedtls examples.
 
 ## Examples
 
-### `ssl_client1.c`
+### `ssl_client.c`
 
 Simple example showing how to post a single chunk to chunks.memfault.com.
 
 See the source here for the implementation:
 
-[programs/ssl/ssl_client1.c](programs/ssl/ssl_client1.c)
+[ssl_client.c](ssl_client.c)
 
 To run the example, you'll need Make and a C compiler. On Ubuntu linux you might
 install this package:
@@ -24,11 +24,11 @@ To compile and run the example program, run these commands from the root of the 
 (be sure to update submodules first!):
 
 ```bash
-# build the test program
-❯ make -C programs/ ssl/ssl_client1
+# build mbedtls libraries and the test program
+❯ make
 
 # run the example. be sure to set your project key below!
-❯ MEMFAULT_HTTPTEST_API_KEY=$MEMFAULT_PROJECT_KEY programs/ssl/ssl_client1
+❯ MEMFAULT_HTTPTEST_API_KEY=$MEMFAULT_PROJECT_KEY ./ssl_client
 ```
 
 If it succeeds, you should see output like the following:
