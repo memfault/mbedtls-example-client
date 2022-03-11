@@ -1,0 +1,7 @@
+[submodule "third_party/mbedtls"]
+	path = third_party/mbedtls
+	url = https://github.com/ARMmbed/mbedtls.git
+	shallow = true
+[submodule "third_party/memfault-firmware-sdk"]
+	path = third_party/memfault-firmware-sdk
+	url = https://github.com/memfault/memfault-firmware-sdk.git
