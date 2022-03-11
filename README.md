@@ -1,7 +1,6 @@
-# Memfault/mbedtls
+# mbedtls-example-client
 
-Fork of [ARMmbed/mbedtls](https://github.com/ARMmbed/mbedtls) for sharing
-Memfault mbedtls examples.
+Example Memfault chunks client using MbedTLS.
 
 ## Examples
 
