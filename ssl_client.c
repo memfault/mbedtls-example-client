@@ -95,6 +95,115 @@ static void my_debug( void *ctx, int level,
     fflush(  (FILE *) ctx  );
 }
 
+static int post_chunk(int count, mbedtls_ssl_context ssl) {
+    int ret = 1;
+    unsigned char buf[1024];
+
+  /*
+   * 3. Write the POST request
+   */
+  const char *apikey = getenv("MEMFAULT_HTTPTEST_API_KEY");
+  if (!apikey) {
+      ret = 1;
+    mbedtls_printf("ERROR: set MEMFAULT_HTTPTEST_API_KEY\n\n");
+    goto exit;
+  }
+
+    // example chunk data
+  const unsigned char chunk[] = {
+    0x08, 0x02, 0xa7, 0x02, 0x01, 0x03, 0x01, 0x07, 0x6a, 0x54, 0x45, 0x53, 0x54, 0x53, 0x45,
+    0x52, 0x49, 0x41, 0x4c+count, 0x0a, 0x6d, 0x74, 0x65, 0x73, 0x74, 0x2d, 0x73, 0x6f, 0x66, 0x74,
+    0x77, 0x61, 0x72, 0x65, 0x09, 0x6a, 0x31, 0x2e, 0x30, 0x2e, 0x30, 0x2d, 0x74, 0x65, 0x73,
+    0x74, 0x06, 0x6d, 0x74, 0x65, 0x73, 0x74, 0x2d, 0x68, 0x61, 0x72, 0x64, 0x77, 0x61, 0x72,
+    0x65, 0x04, 0xa1, 0x01, 0xa1, 0x72, 0x63, 0x68, 0x75, 0x6e, 0x6b, 0x5f, 0x74, 0x65, 0x73,
+    0x74, 0x5f, 0x73, 0x75, 0x63, 0x63, 0x65, 0x73, 0x73, 0x01, 0x31, 0xe4};
+
+    // format the request
+    unsigned char sendbuf[2048];
+    int len = sprintf( (char *)sendbuf, POST_REQUEST, apikey, sizeof(chunk) );
+
+    mbedtls_printf( "  > Write to server:" );
+    fflush( stdout );
+
+    mbedtls_printf("\nHeader: \n%s", sendbuf);
+
+    // send the header
+    while( ( ret = mbedtls_ssl_write( &ssl, sendbuf, len ) ) <= 0 )
+    {
+        if( ret != MBEDTLS_ERR_SSL_WANT_READ && ret != MBEDTLS_ERR_SSL_WANT_WRITE )
+        {
+            mbedtls_printf( "\n failed\n  ! mbedtls_ssl_write returned %d\n\n", ret );
+            goto exit;
+        }
+    }
+
+    len = ret;
+    mbedtls_printf( "\n %d header bytes written\n\n%s", len, (char *) buf );
+
+    // send the payload
+    while( ( ret = mbedtls_ssl_write( &ssl, chunk, sizeof(chunk) ) ) <= 0 )
+    {
+        if( ret != MBEDTLS_ERR_SSL_WANT_READ && ret != MBEDTLS_ERR_SSL_WANT_WRITE )
+        {
+            mbedtls_printf( " failed\n  ! mbedtls_ssl_write returned %d\n\n", ret );
+            goto exit;
+        }
+    }
+
+    len = ret;
+    mbedtls_printf( " %d payload bytes written\n\n%s", len, (char *) buf );
+
+    /*
+     * 7. Read the HTTP response
+     */
+    mbedtls_printf( "  < Read from server:" );
+    fflush( stdout );
+
+    do
+    {
+        len = sizeof( buf ) - 1;
+        memset( buf, 0, sizeof( buf ) );
+        ret = mbedtls_ssl_read( &ssl, buf, len );
+
+        if( ret == MBEDTLS_ERR_SSL_WANT_READ || ret == MBEDTLS_ERR_SSL_WANT_WRITE )
+            continue;
+
+        if( ret == MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY )
+        {
+            mbedtls_printf( "\n\nPeer close?\n\n" );
+            break;
+        }
+
+        if( ret < 0 )
+        {
+            mbedtls_printf( "failed\n  ! mbedtls_ssl_read returned %d\n\n", ret );
+            break;
+        }
+
+        if( ret == 0 )
+        {
+            mbedtls_printf( "\n\nEOF\n\n" );
+            break;
+        }
+
+        len = ret;
+        mbedtls_printf( " %d bytes read\n\n%s\n\n", len, (char *) buf );
+
+        // the connection doesn't hang up until 30 seconds after the HTTP
+        // request completes, so check for an HTTP response code
+        if (strstr(buf, "HTTP/1.1 ")) {
+            mbedtls_printf("  . Response received, exiting\n");
+            break;
+        }
+    }
+    while( 1 );
+
+    ret = 0;
+
+exit:
+    return ret;
+}
+
 int main( void )
 {
     int ret = 1, len;
@@ -288,101 +397,13 @@ int main( void )
     else
         mbedtls_printf( " ok\n" );
 
-    /*
-     * 3. Write the POST request
-     */
-      const char *apikey = getenv("MEMFAULT_HTTPTEST_API_KEY");
-  if (!apikey) {
-      ret = 1;
-    mbedtls_printf("ERROR: set MEMFAULT_HTTPTEST_API_KEY\n\n");
-    goto exit;
-  }
-
-    // example chunk data
-  const unsigned char chunk[] = {
-    0x08, 0x02, 0xa7, 0x02, 0x01, 0x03, 0x01, 0x07, 0x6a, 0x54, 0x45, 0x53, 0x54, 0x53, 0x45,
-    0x52, 0x49, 0x41, 0x4c, 0x0a, 0x6d, 0x74, 0x65, 0x73, 0x74, 0x2d, 0x73, 0x6f, 0x66, 0x74,
-    0x77, 0x61, 0x72, 0x65, 0x09, 0x6a, 0x31, 0x2e, 0x30, 0x2e, 0x30, 0x2d, 0x74, 0x65, 0x73,
-    0x74, 0x06, 0x6d, 0x74, 0x65, 0x73, 0x74, 0x2d, 0x68, 0x61, 0x72, 0x64, 0x77, 0x61, 0x72,
-    0x65, 0x04, 0xa1, 0x01, 0xa1, 0x72, 0x63, 0x68, 0x75, 0x6e, 0x6b, 0x5f, 0x74, 0x65, 0x73,
-    0x74, 0x5f, 0x73, 0x75, 0x63, 0x63, 0x65, 0x73, 0x73, 0x01, 0x31, 0xe4};
-
-    // format the request
-    unsigned char sendbuf[2048];
-    len = sprintf( (char *)sendbuf, POST_REQUEST, apikey, sizeof(chunk) );
-
-    mbedtls_printf( "  > Write to server:" );
-    fflush( stdout );
-
-    mbedtls_printf("\nHeader: \n%s", sendbuf);
-
-    // send the header
-    while( ( ret = mbedtls_ssl_write( &ssl, sendbuf, len ) ) <= 0 )
-    {
-        if( ret != MBEDTLS_ERR_SSL_WANT_READ && ret != MBEDTLS_ERR_SSL_WANT_WRITE )
-        {
-            mbedtls_printf( "\n failed\n  ! mbedtls_ssl_write returned %d\n\n", ret );
-            goto exit;
-        }
+    for (int i = 0; i < 2; i++) {
+      ret = post_chunk(i, ssl);
+      if (ret != 0) {
+        mbedtls_printf("Failed to post chunk\n");
+        goto exit;
+      }
     }
-
-    len = ret;
-    mbedtls_printf( "\n %d header bytes written\n\n%s", len, (char *) buf );
-
-    // send the payload
-    while( ( ret = mbedtls_ssl_write( &ssl, chunk, sizeof(chunk) ) ) <= 0 )
-    {
-        if( ret != MBEDTLS_ERR_SSL_WANT_READ && ret != MBEDTLS_ERR_SSL_WANT_WRITE )
-        {
-            mbedtls_printf( " failed\n  ! mbedtls_ssl_write returned %d\n\n", ret );
-            goto exit;
-        }
-    }
-
-    len = ret;
-    mbedtls_printf( " %d payload bytes written\n\n%s", len, (char *) buf );
-
-    /*
-     * 7. Read the HTTP response
-     */
-    mbedtls_printf( "  < Read from server:" );
-    fflush( stdout );
-
-    do
-    {
-        len = sizeof( buf ) - 1;
-        memset( buf, 0, sizeof( buf ) );
-        ret = mbedtls_ssl_read( &ssl, buf, len );
-
-        if( ret == MBEDTLS_ERR_SSL_WANT_READ || ret == MBEDTLS_ERR_SSL_WANT_WRITE )
-            continue;
-
-        if( ret == MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY )
-            break;
-
-        if( ret < 0 )
-        {
-            mbedtls_printf( "failed\n  ! mbedtls_ssl_read returned %d\n\n", ret );
-            break;
-        }
-
-        if( ret == 0 )
-        {
-            mbedtls_printf( "\n\nEOF\n\n" );
-            break;
-        }
-
-        len = ret;
-        mbedtls_printf( " %d bytes read\n\n%s\n\n", len, (char *) buf );
-
-        // the connection doesn't hang up until 30 seconds after the HTTP
-        // request completes, so check for an HTTP response code
-        if (strstr(buf, "HTTP/1.1 ")) {
-            mbedtls_printf("  . Response received, exiting\n");
-            break;
-        }
-    }
-    while( 1 );
 
     mbedtls_ssl_close_notify( &ssl );
 
